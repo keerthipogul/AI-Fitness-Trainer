@@ -3,7 +3,7 @@ services:
   fitness-trainer:
     build: .
     image: ai-fitness-trainer:latest
-    container_name: ai-fitness-trainer
+    # container_name: ai-fitness-trainer
     ports:
       - "8501:8501"
     volumes:
