@@ -9,7 +9,9 @@ import math
 
 st.set_page_config(page_title="AI Fitness Trainer")
 st.title("🏋️ AI Fitness Trainer")
-st.write("Upload a workout video for pose detection and squat rep counting.")
+st.write("Upload a workout video for pose detection and repetition counting.")
+
+exercise = st.selectbox("Select Exercise", ["Squat", "Pull-up"])
 
 uploaded = st.file_uploader(
     "Upload workout video",
@@ -18,175 +20,198 @@ uploaded = st.file_uploader(
 
 
 def calculate_angle(a, b, c):
-    """Calculate angle ABC using 2D landmark coordinates."""
     angle = math.degrees(
         math.atan2(c[1] - b[1], c[0] - b[0])
         - math.atan2(a[1] - b[1], a[0] - b[0])
     )
     angle = abs(angle)
-    if angle > 180:
-        angle = 360 - angle
-    return angle
+    return 360 - angle if angle > 180 else angle
 
 
 if uploaded:
-    with tempfile.NamedTemporaryFile(
-        delete=False, suffix=".mp4"
-    ) as f:
-        f.write(uploaded.read())
-        video_path = f.name
+    video_path = None
+    output_path = None
+    converted_path = None
 
-    cap = cv2.VideoCapture(video_path)
-    output_path = video_path.replace(".mp4", "_out.mp4")
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".mp4"
+        ) as f:
+            f.write(uploaded.read())
+            video_path = f.name
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+        cap = cv2.VideoCapture(video_path)
 
-    writer = cv2.VideoWriter(
-        output_path,
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps,
-        (width, height)
-    )
+        if not cap.isOpened():
+            st.error("Unable to open this video.")
+            st.stop()
 
-    mp_pose = mp.solutions.pose
-    draw = mp.solutions.drawing_utils
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25
 
-    rep_count = 0
-    squat_state = "UP"
-    knee_angle = None
-    visibility_threshold = 0.5
+        output_path = video_path.replace(".mp4", "_out.mp4")
+        converted_path = video_path.replace(".mp4", "_converted.mp4")
 
-    with mp_pose.Pose(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    ) as pose:
-        while cap.isOpened():
-            ok, frame = cap.read()
-            if not ok:
-                break
+        writer = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, height)
+        )
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            result = pose.process(rgb)
+        mp_pose = mp.solutions.pose
+        draw = mp.solutions.drawing_utils
 
-            if result.pose_landmarks:
-                landmarks = result.pose_landmarks.landmark
+        rep_count = 0
+        exercise_state = "UP"
+        visibility_threshold = 0.5
 
-                draw.draw_landmarks(
-                    frame,
-                    result.pose_landmarks,
-                    mp_pose.POSE_CONNECTIONS
+        with mp_pose.Pose(
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        ) as pose:
+            while cap.isOpened():
+                ok, frame = cap.read()
+                if not ok:
+                    break
+
+                result = pose.process(
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 )
 
-                # Use the more visible side of the body.
-                left_ids = [
-                    mp_pose.PoseLandmark.LEFT_HIP.value,
-                    mp_pose.PoseLandmark.LEFT_KNEE.value,
-                    mp_pose.PoseLandmark.LEFT_ANKLE.value
-                ]
-                right_ids = [
-                    mp_pose.PoseLandmark.RIGHT_HIP.value,
-                    mp_pose.PoseLandmark.RIGHT_KNEE.value,
-                    mp_pose.PoseLandmark.RIGHT_ANKLE.value
-                ]
+                label = ""
+                visibility = 0
 
-                left_visibility = min(
-                    landmarks[i].visibility for i in left_ids
-                )
-                right_visibility = min(
-                    landmarks[i].visibility for i in right_ids
-                )
+                if result.pose_landmarks:
+                    landmarks = result.pose_landmarks.landmark
 
-                chosen_ids = (
-                    left_ids if left_visibility >= right_visibility
-                    else right_ids
-                )
-                chosen_visibility = max(
-                    left_visibility, right_visibility
-                )
+                    draw.draw_landmarks(
+                        frame,
+                        result.pose_landmarks,
+                        mp_pose.POSE_CONNECTIONS
+                    )
 
-                if chosen_visibility >= visibility_threshold:
-                    hip, knee, ankle = [
-                        (
-                            landmarks[i].x * width,
-                            landmarks[i].y * height
+                    if exercise == "Squat":
+                        left_ids = [
+                            mp_pose.PoseLandmark.LEFT_HIP.value,
+                            mp_pose.PoseLandmark.LEFT_KNEE.value,
+                            mp_pose.PoseLandmark.LEFT_ANKLE.value
+                        ]
+                        right_ids = [
+                            mp_pose.PoseLandmark.RIGHT_HIP.value,
+                            mp_pose.PoseLandmark.RIGHT_KNEE.value,
+                            mp_pose.PoseLandmark.RIGHT_ANKLE.value
+                        ]
+                    else:
+                        left_ids = [
+                            mp_pose.PoseLandmark.LEFT_SHOULDER.value,
+                            mp_pose.PoseLandmark.LEFT_ELBOW.value,
+                            mp_pose.PoseLandmark.LEFT_WRIST.value
+                        ]
+                        right_ids = [
+                            mp_pose.PoseLandmark.RIGHT_SHOULDER.value,
+                            mp_pose.PoseLandmark.RIGHT_ELBOW.value,
+                            mp_pose.PoseLandmark.RIGHT_WRIST.value
+                        ]
+
+                    left_vis = min(landmarks[i].visibility for i in left_ids)
+                    right_vis = min(landmarks[i].visibility for i in right_ids)
+
+                    chosen_ids = (
+                        left_ids if left_vis >= right_vis else right_ids
+                    )
+                    visibility = max(left_vis, right_vis)
+
+                    if visibility >= visibility_threshold:
+                        a, b, c = [
+                            (
+                                landmarks[i].x * width,
+                                landmarks[i].y * height
+                            )
+                            for i in chosen_ids
+                        ]
+
+                        angle = calculate_angle(a, b, c)
+
+                        if exercise == "Squat":
+                            if angle < 110 and exercise_state == "UP":
+                                exercise_state = "DOWN"
+                            elif angle > 160 and exercise_state == "DOWN":
+                                rep_count += 1
+                                exercise_state = "UP"
+
+                            label = f"Knee angle: {int(angle)} deg"
+
+                        else:
+                            # Count a pull-up when arms bend, then extend.
+                            if angle < 90 and exercise_state == "UP":
+                                exercise_state = "PULLING"
+                            elif angle > 150 and exercise_state == "PULLING":
+                                rep_count += 1
+                                exercise_state = "UP"
+
+                            label = f"Elbow angle: {int(angle)} deg"
+
+                        cv2.putText(
+                            frame, label, (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.8, (0, 255, 255), 2
                         )
-                        for i in chosen_ids
-                    ]
-
-                    knee_angle = calculate_angle(hip, knee, ankle)
-
-                    # Simple squat state machine.
-                    if knee_angle < 110 and squat_state == "UP":
-                        squat_state = "DOWN"
-
-                    elif knee_angle > 160 and squat_state == "DOWN":
-                        rep_count += 1
-                        squat_state = "UP"
 
                     cv2.putText(
                         frame,
-                        f"Knee angle: {int(knee_angle)} deg",
-                        (20, 40),
+                        f"{exercise} reps: {rep_count}",
+                        (20, 80),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.8, (0, 255, 255), 2
+                        1, (0, 255, 0), 2
                     )
 
-                cv2.putText(
-                    frame,
-                    f"Squat reps: {rep_count}",
-                    (20, 80),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1, (0, 255, 0), 2
-                )
+                    display_state = (
+                        exercise_state
+                        if visibility >= visibility_threshold
+                        else "Not visible"
+                    )
 
-                cv2.putText(
-                    frame,
-                    f"State: {squat_state}",
-                    (20, 120),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8, (255, 255, 0), 2
-                )
+                    cv2.putText(
+                        frame, f"State: {display_state}", (20, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8, (255, 255, 0), 2
+                    )
 
-            else:
-                cv2.putText(
-                    frame,
-                    "No pose detected",
-                    (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8, (0, 0, 255), 2
-                )
+                else:
+                    cv2.putText(
+                        frame, "No pose detected", (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8, (0, 0, 255), 2
+                    )
 
-            writer.write(frame)
+                writer.write(frame)
 
-    cap.release()
-    writer.release()
+        cap.release()
+        writer.release()
 
-    st.success("Pose detection and squat counting completed!")
+        st.success(f"{exercise} pose detection completed!")
 
-    converted_path = output_path.replace(
-        ".mp4", "_converted.mp4"
-    )
+        conversion = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", output_path,
+                "-vcodec", "libx264",
+                "-pix_fmt", "yuv420p",
+                converted_path
+            ],
+            capture_output=True,
+            text=True
+        )
 
-    conversion = subprocess.run(
-        [
-            "ffmpeg", "-y", "-i", output_path,
-            "-vcodec", "libx264",
-            "-pix_fmt", "yuv420p",
-            converted_path
-        ],
-        capture_output=True,
-        text=True
-    )
+        if conversion.returncode == 0:
+            st.metric(f"{exercise} repetitions", rep_count)
+            st.video(converted_path)
+        else:
+            st.error("Video conversion failed.")
+            st.code(conversion.stderr[-2000:])
 
-    if conversion.returncode == 0:
-        st.metric("Squat repetitions", rep_count)
-        st.video(converted_path)
-    else:
-        st.error("Video conversion failed")
-        st.code(conversion.stderr[-2000:])
-
-    for path in [video_path, output_path, converted_path]:
-        if os.path.exists(path):
-            os.remove(path)
+    finally:
+        for path in [video_path, output_path, converted_path]:
+            if path and os.path.exists(path):
+                os.remove(path)
