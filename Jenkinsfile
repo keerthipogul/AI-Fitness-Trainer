@@ -26,9 +26,9 @@ pipeline {
                 ]) {
                     bat '''
                     icacls "%EC2_KEY%" /inheritance:r
-                    icacls "%EC2_KEY%" /grant:r "%USERDOMAIN%\\%USERNAME%:R"
+                    icacls "%EC2_KEY%" /grant:r "*S-1-5-18:R"
 
-                    ssh -i "%EC2_KEY%" -o StrictHostKeyChecking=accept-new %EC2_USER%@%EC2_HOST% "if [ -d AI-Fitness-Trainer-CI/.git ]; then cd AI-Fitness-Trainer-CI && git pull; else git clone https://github.com/keerthipogul/AI-Fitness-Trainer.git AI-Fitness-Trainer-CI; fi"
+                    ssh -i "%EC2_KEY%" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 %EC2_USER%@%EC2_HOST% "if [ -d AI-Fitness-Trainer-CI/.git ]; then cd AI-Fitness-Trainer-CI && git pull; else git clone %REPO_URL% AI-Fitness-Trainer-CI; fi"
                     '''
                 }
             }
@@ -45,7 +45,7 @@ pipeline {
                 ]) {
                     bat '''
                     icacls "%EC2_KEY%" /inheritance:r
-                    icacls "%EC2_KEY%" /grant:r "%USERDOMAIN%\\%USERNAME%:R"
+                    icacls "%EC2_KEY%" /grant:r "*S-1-5-18:R"
 
                     ssh -i "%EC2_KEY%" %EC2_USER%@%EC2_HOST% "cd AI-Fitness-Trainer-CI && docker build -t ai-fitness-trainer:latest ."
                     '''
@@ -64,7 +64,7 @@ pipeline {
                 ]) {
                     bat '''
                     icacls "%EC2_KEY%" /inheritance:r
-                    icacls "%EC2_KEY%" /grant:r "%USERDOMAIN%\\%USERNAME%:R"
+                    icacls "%EC2_KEY%" /grant:r "*S-1-5-18:R"
 
                     ssh -i "%EC2_KEY%" %EC2_USER%@%EC2_HOST% "docker rm -f ai-fitness-trainer || true"
                     ssh -i "%EC2_KEY%" %EC2_USER%@%EC2_HOST% "docker run -d --restart unless-stopped -p 8501:8501 --name ai-fitness-trainer ai-fitness-trainer:latest"
