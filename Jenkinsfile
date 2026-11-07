@@ -54,25 +54,23 @@ pipeline {
         }
 
         stage('Deploy on EC2') {
-            steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'ec2-ssh-key',
-                        keyFileVariable: 'EC2_KEY',
-                        usernameVariable: 'EC2_USER'
-                    )
-                ]) {
-                    bat '''
-                    icacls "%EC2_KEY%" /inheritance:r
-                    icacls "%EC2_KEY%" /grant:r "*S-1-5-18:R"
+    steps {
+        withCredentials([
+            sshUserPrivateKey(
+                credentialsId: 'ec2-ssh-key',
+                keyFileVariable: 'EC2_KEY',
+                usernameVariable: 'EC2_USER'
+            )
+        ]) {
+            bat '''
+                icacls "%EC2_KEY%" /inheritance:r
+                icacls "%EC2_KEY%" /grant:r "*S-1-5-18:R"
 
-                    ssh -i "%EC2_KEY%" %EC2_USER%@%EC2_HOST% "docker rm -f ai-fitness-trainer || true"
-                    ssh -i "%EC2_KEY%" %EC2_USER%@%EC2_HOST% "docker run -d --restart unless-stopped -p 8501:8501 --name ai-fitness-trainer ai-fitness-trainer:latest"
-                    '''
-                }
-            }
+                ssh -i "%EC2_KEY%" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 %EC2_USER%@16.176.155.23 "docker rm -f ai-fitness-trainer 2>/dev/null || true; docker run -d --restart unless-stopped -p 8501:8501 --name ai-fitness-trainer ai-fitness-trainer:latest; docker ps"
+            '''
         }
     }
+}
 
     post {
         success {
